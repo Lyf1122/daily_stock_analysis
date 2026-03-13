@@ -169,11 +169,21 @@ class SystemConfigService:
         for key in all_keys:
             raw_value = config_map.get(key, "")
             field_schema = schema_by_key[key]
+            is_sensitive = bool(field_schema.get("is_sensitive", False))
+
+            # Apply masking for sensitive fields
+            if is_sensitive and raw_value:
+                display_value = mask_token
+                is_masked = True
+            else:
+                display_value = raw_value
+                is_masked = False
+
             item: Dict[str, Any] = {
                 "key": key,
-                "value": raw_value,
+                "value": display_value,
                 "raw_value_exists": bool(raw_value),
-                "is_masked": False,
+                "is_masked": is_masked,
             }
             if include_schema:
                 item["schema"] = field_schema
