@@ -201,7 +201,7 @@ class HistoryService:
         """
         Get history report detail.
 
-        Uses database primary key for precise query, avoiding returning incorrect records 
+        Uses database primary key for precise query, avoiding returning incorrect records
         due to duplicate query_id in batch analysis.
 
         Args:
@@ -323,14 +323,31 @@ class HistoryService:
                 records = self._fallback_news_by_analysis_context(query_id=query_id, limit=limit)
 
             items: List[Dict[str, str]] = []
+            cutoff_date = datetime.now() - timedelta(days=max_age_days)
+
             for record in records:
+                # 时效性过滤：优先使用 published_date，其次使用 fetched_at
+                record_date = record.published_date or record.fetched_at
+                if record_date and record_date < cutoff_date:
+                    logger.debug(f"过滤过期新闻: {record.title}, 日期: {record_date}")
+                    continue
+
                 snippet = (record.snippet or "").strip()
                 if len(snippet) > 200:
                     snippet = f"{snippet[:197]}..."
+
+                # 格式化日期显示
+                date_str = None
+                if record.published_date:
+                    date_str = record.published_date.strftime("%Y-%m-%d")
+                elif record.fetched_at:
+                    date_str = record.fetched_at.strftime("%Y-%m-%d")
+
                 items.append({
                     "title": record.title,
                     "snippet": snippet,
                     "url": record.url,
+                    "published_date": date_str,
                 })
 
             return items

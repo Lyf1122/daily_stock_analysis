@@ -213,6 +213,7 @@ export interface NewsIntelItem {
   title: string;
   snippet: string;
   url: string;
+  published_date?: string;
 }
 
 /** News response */

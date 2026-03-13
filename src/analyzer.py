@@ -1501,6 +1501,13 @@ class GeminiAnalyzer:
 ## 📰 舆情情报
 """
         if news_context:
+            # 动态计算时效性提示
+            current_date = datetime.now()
+            current_month = current_date.strftime('%Y年%m月')
+            last_month = (current_date.replace(day=1) - timedelta(days=1)).strftime('%Y年%m月')
+            current_year = current_date.year
+            last_year = current_year - 1
+
             prompt += f"""
 以下是 **{stock_name}({code})** 近{news_window_days}日的新闻搜索结果，请重点提取：
 1. 🚨 **风险警报**：减持、处罚、利空
@@ -1510,6 +1517,19 @@ class GeminiAnalyzer:
    - 输出到 `risk_alerts` / `positive_catalysts` / `latest_news` 的每一条都必须带具体日期（YYYY-MM-DD）
    - 超出近{news_window_days}日窗口的新闻一律忽略
    - 时间未知、无法确定发布日期的新闻一律忽略
+
+**⚠️ 时效性严格要求**：
+- **当前日期：{current_month}**
+- **仅接受 {current_month} 和 {last_month} 的新闻**
+- **过期判断规则**：
+  * "{last_year}年X月" 或更早 → **过期，忽略**
+  * "X月X日"（无年份且月份不是当前/上月） → **默认视为过期**
+  * "今年X月" 或 "本月" → **可以使用**
+- 在 `latest_news` 中：如果所有新闻都过期，请写"**近期无重大新闻**"
+- 在 `risk_alerts` 中：**严禁**将过期事件列为当前风险
+- 在 `positive_catalysts` 中：**严禁**将过期事件列为当前利好
+
+**重要**：搜索引擎可能返回旧闻，你必须主动过滤，不要盲目复制新闻内容！
 
 ```
 {news_context}

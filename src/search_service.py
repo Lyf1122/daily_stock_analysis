@@ -2432,28 +2432,115 @@ class SearchService:
         
         return results
     
+    def _extract_date_from_content(self, title: str, snippet: str) -> Optional[datetime]:
+        """
+        从新闻标题和内容中提取日期
+
+        用于检测新闻是否包含过期日期信息（如"2025年7月"）
+
+        Args:
+            title: 新闻标题
+            snippet: 新闻摘要
+
+        Returns:
+            提取到的日期，如果未找到则返回 None
+        """
+        import re
+        from datetime import datetime
+
+        content = f"{title} {snippet}"
+
+        # 匹配各种日期格式
+        patterns = [
+            r'(\d{4})年(\d{1,2})月(\d{1,2})日',  # 2025年7月24日
+            r'(\d{4})-(\d{1,2})-(\d{1,2})',       # 2025-07-24
+            r'(\d{4})/(\d{1,2})/(\d{1,2})',       # 2025/07/24
+            r'(\d{4})\.(\d{1,2})\.(\d{1,2})',     # 2025.07.24
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, content)
+            if match:
+                try:
+                    year, month, day = map(int, match.groups())
+                    # 检查是否是合理的日期
+                    if 2000 <= year <= 2030 and 1 <= month <= 12 and 1 <= day <= 31:
+                        return datetime(year, month, day)
+                except (ValueError, IndexError):
+                    continue
+
+        return None
+
+    def _is_result_fresh(self, published_date: Optional[str], max_days: int) -> bool:
+        """
+        检查搜索结果是否在时效范围内
+
+        Args:
+            published_date: 发布日期字符串
+            max_days: 最大允许天数
+
+        Returns:
+            True 如果在时效范围内或日期未知，False 如果过期
+        """
+        if not published_date:
+            # 没有日期信息，保守起见保留该结果
+            return True
+
+        try:
+            from datetime import datetime, timedelta
+            import re
+
+            # 尝试解析多种日期格式
+            # ISO 格式: 2025-07-15, 2025-07-15T10:30:00
+            # 中文格式: 2025年7月15日
+            # 相对格式: 可能包含 "天前"、"小时前" 等
+
+            # 首先尝试 ISO 格式
+            for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ"):
+                try:
+                    pub_dt = datetime.strptime(published_date, fmt)
+                    age_days = (datetime.now() - pub_dt).days
+                    return age_days <= max_days
+                except ValueError:
+                    continue
+
+            # 尝试中文格式 "2025年7月15日"
+            cn_match = re.match(r'(\d{4})年(\d{1,2})月(\d{1,2})日', published_date)
+            if cn_match:
+                year, month, day = map(int, cn_match.groups())
+                pub_dt = datetime(year, month, day)
+                age_days = (datetime.now() - pub_dt).days
+                return age_days <= max_days
+
+            # 无法解析的格式，保守保留
+            return True
+
+        except Exception as e:
+            logger.debug(f"解析日期失败: {published_date}, error: {e}")
+            return True
+
     def format_intel_report(self, intel_results: Dict[str, SearchResponse], stock_name: str) -> str:
         """
-        格式化情报搜索结果为报告
-        
+        格式化情报搜索结果为报告（带时效过滤）
+
         Args:
             intel_results: 多维度搜索结果
             stock_name: 股票名称
-            
+
         Returns:
             格式化的情报报告文本
         """
         lines = [f"【{stock_name} 情报搜索结果】"]
-        
+
         # 维度展示顺序
         display_order = ['latest_news', 'market_analysis', 'risk_check', 'earnings', 'industry']
-        
+
         for dim_name in display_order:
             if dim_name not in intel_results:
                 continue
-                
+
             resp = intel_results[dim_name]
-            
+
             # 获取维度描述
             dim_desc = dim_name
             if dim_name == 'latest_news': dim_desc = '📰 最新消息'
@@ -2461,11 +2548,33 @@ class SearchService:
             elif dim_name == 'risk_check': dim_desc = '⚠️ 风险排查'
             elif dim_name == 'earnings': dim_desc = '📊 业绩预期'
             elif dim_name == 'industry': dim_desc = '🏭 行业分析'
-            
+
             lines.append(f"\n{dim_desc} (来源: {resp.provider}):")
             if resp.success and resp.results:
+                # 过滤过期的搜索结果（同时检查 published_date 和内容中的日期）
+                fresh_results = []
+                for r in resp.results:
+                    # 首先检查 published_date
+                    if not self._is_result_fresh(r.published_date, self.news_max_age_days):
+                        logger.debug(f"过滤过期新闻（published_date）: {r.title[:50]}")
+                        continue
+
+                    # 然后检查内容中是否有过期日期
+                    content_date = self._extract_date_from_content(r.title, r.snippet)
+                    if content_date:
+                        age_days = (datetime.now() - content_date).days
+                        if age_days > self.news_max_age_days:
+                            logger.debug(f"过滤过期新闻（内容日期）: {r.title[:50]}, 日期: {content_date}")
+                            continue
+
+                    fresh_results.append(r)
+
+                if not fresh_results:
+                    lines.append("  未找到近期相关信息（所有结果已超过时效范围）")
+                    continue
+
                 # 增加显示条数
-                for i, r in enumerate(resp.results[:4], 1):
+                for i, r in enumerate(fresh_results[:4], 1):
                     date_str = f" [{r.published_date}]" if r.published_date else ""
                     lines.append(f"  {i}. {r.title}{date_str}")
                     # 如果摘要太短，可能信息量不足
@@ -2473,7 +2582,7 @@ class SearchService:
                     lines.append(f"     {snippet}...")
             else:
                 lines.append("  未找到相关信息")
-        
+
         return "\n".join(lines)
     
     def batch_search(
