@@ -147,6 +147,7 @@ export interface NewsIntelItem {
   title: string;
   snippet: string;
   url: string;
+  published_date?: string;
 }
 
 /** 新闻情报响应 */

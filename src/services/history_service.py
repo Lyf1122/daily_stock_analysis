@@ -263,16 +263,17 @@ class HistoryService:
             "context_snapshot": context_snapshot,
         }
 
-    def get_news_intel(self, query_id: str, limit: int = 20) -> List[Dict[str, str]]:
+    def get_news_intel(self, query_id: str, limit: int = 20, max_age_days: int = 30) -> List[Dict[str, str]]:
         """
-        获取指定 query_id 关联的新闻情报
+        获取指定 query_id 关联的新闻情报（带时效过滤）
 
         Args:
             query_id: 分析记录唯一标识
             limit: 返回数量限制
+            max_age_days: 最大保留天数，默认30天（前端"相关资讯"栏展示）
 
         Returns:
-            新闻情报列表（包含 title、snippet、url）
+            新闻情报列表（包含 title、snippet、url、published_date）
         """
         try:
             records = self.db.get_news_intel_by_query_id(query_id=query_id, limit=limit)
@@ -281,14 +282,31 @@ class HistoryService:
                 records = self._fallback_news_by_analysis_context(query_id=query_id, limit=limit)
 
             items: List[Dict[str, str]] = []
+            cutoff_date = datetime.now() - timedelta(days=max_age_days)
+
             for record in records:
+                # 时效性过滤：优先使用 published_date，其次使用 fetched_at
+                record_date = record.published_date or record.fetched_at
+                if record_date and record_date < cutoff_date:
+                    logger.debug(f"过滤过期新闻: {record.title}, 日期: {record_date}")
+                    continue
+
                 snippet = (record.snippet or "").strip()
                 if len(snippet) > 200:
                     snippet = f"{snippet[:197]}..."
+
+                # 格式化日期显示
+                date_str = None
+                if record.published_date:
+                    date_str = record.published_date.strftime("%Y-%m-%d")
+                elif record.fetched_at:
+                    date_str = record.fetched_at.strftime("%Y-%m-%d")
+
                 items.append({
                     "title": record.title,
                     "snippet": snippet,
                     "url": record.url,
+                    "published_date": date_str,
                 })
 
             return items

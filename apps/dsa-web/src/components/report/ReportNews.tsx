@@ -97,9 +97,16 @@ export const ReportNews: React.FC<ReportNewsProps> = ({ recordId, limit = 20 }) 
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0 text-left">
-                  <p className="text-sm text-white font-medium leading-snug text-left">
-                    {item.title}
-                  </p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-sm text-white font-medium leading-snug text-left">
+                      {item.title}
+                    </p>
+                    {item.published_date && (
+                      <span className="text-xs text-muted whitespace-nowrap">
+                        {item.published_date}
+                      </span>
+                    )}
+                  </div>
                   {item.snippet && (
                     <p className="text-xs text-secondary mt-1 text-left">
                       {item.snippet}
