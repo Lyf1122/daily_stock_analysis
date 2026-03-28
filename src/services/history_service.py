@@ -289,32 +289,17 @@ class HistoryService:
             "context_snapshot": context_snapshot,
         }
 
-    def delete_history_records(self, record_ids: List[int]) -> int:
+    def get_news_intel(self, query_id: str, limit: int = 20, max_age_days: int = 30) -> List[Dict[str, str]]:
         """
-        Delete specified analysis history records.
+        获取指定 query_id 关联的新闻情报（带时效过滤）
 
         Args:
-            record_ids: List of history record primary key IDs
+            query_id: 分析记录唯一标识
+            limit: 返回数量限制
+            max_age_days: 最大保留天数，默认30天（前端"相关资讯"栏展示）
 
         Returns:
-            Number of records actually deleted
-
-        Raises:
-            Exception: Re-raises any storage-layer exception so the API caller
-                       receives a proper 500 error instead of a silent success.
-        """
-        return self.db.delete_analysis_history_records(record_ids)
-
-    def get_news_intel(self, query_id: str, limit: int = 20) -> List[Dict[str, str]]:
-        """
-        Get news intelligence associated with a specified query_id.
-
-        Args:
-            query_id: Unique analysis identifier
-            limit: Result limit
-
-        Returns:
-            List of news intelligence (containing title, snippet, and url)
+            新闻情报列表（包含 title、snippet、url、published_date）
         """
         try:
             records = self.db.get_news_intel_by_query_id(query_id=query_id, limit=limit)
