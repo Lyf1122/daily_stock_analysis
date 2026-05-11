@@ -1,0 +1,66 @@
+name: Sync Fork with Upstream
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 每天凌晨2点执行
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/ZhuLinsen/daily_stock_analysis.git
+          git fetch upstream
+
+      - name: Check if merge is needed
+        id: check
+        run: |
+          # 比较本地 main 和 upstream/main 的 commit
+          LOCAL=$(git rev-parse main)
+          UPSTREAM=$(git rev-parse upstream/main)
+          if [ "$LOCAL" = "$UPSTREAM" ]; then
+            echo "need_merge=false" >> $GITHUB_OUTPUT
+            echo "No updates needed from upstream"
+          else
+            echo "need_merge=true" >> $GITHUB_OUTPUT
+            echo "Updates available from upstream"
+          fi
+
+      - name: Merge upstream into main
+        if: steps.check.outputs.need_merge == 'true'
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge upstream/main --no-edit
+
+      - name: Create PR if needed
+        if: steps.check.outputs.need_merge == 'true'
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: sync with upstream"
+          title: "chore: sync with upstream main"
+          body: |
+            自动同步上游仓库 (ZhuLinsen/daily_stock_analysis) 的最新变更。
+
+            - 如果你想手动审查，请在此 PR 中查看变更内容
+            - 合并后将自动删除此分支
+          branch: sync/upstream
+          delete-branch: true
+
+      - name: Enable auto-merge and merge PR
+        if: steps.check.outputs.need_merge == 'true'
+        run: |
+          # 等待 PR 创建完成
+          sleep 5
+          # 启用自动合并
+          gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --admin --merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
