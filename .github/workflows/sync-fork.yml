@@ -64,3 +64,21 @@ jobs:
           gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --admin --merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify via Feishu
+        if: always()
+        run: |
+          # 通知结果
+          if [ "${{ steps.check.outputs.need_merge }}" == "true" ]; then
+            if [ "${{ job.status }}" == "success" ]; then
+              MSG="✅ Fork 同步成功\n\n📌 已自动同步上游仓库 ZhuLinsen/daily_stock_analysis 的最新变更并合并到 main 分支"
+            else
+              MSG="❌ Fork 同步失败\n\n⚠️ 同步上游仓库时出现错误，请检查 GitHub Actions 日志"
+            fi
+          else
+            MSG="ℹ️ Fork 同步检查\n\n✅ 当前已是最新版本，无需同步"
+          fi
+
+          curl -s -X POST 'https://open.feishu.cn/open-apis/bot/v2/hook/e30c6f38-f7ee-4e60-a2e8-190c8e371b87' \
+            -H 'Content-Type: application/json' \
+            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"$MSG\"}}"
