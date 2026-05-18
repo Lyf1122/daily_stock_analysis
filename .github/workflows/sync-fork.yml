@@ -19,18 +19,22 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          # 设置 git 身份（必须）
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # 设置 git 身份
+          git config user.name "Li Yifan"
+          git config user.email "liyifan_official@163.com"
 
-          # 获取所有远程 refs，确保本地跟远程完全同步
+          # 添加上游仓库（如果不存在则添加，如果已存在则设置 URL）
+          if git remote get-url upstream &>/dev/null; then
+            git remote set-url upstream https://github.com/ZhuLinsen/daily_stock_analysis.git
+          else
+            git remote add upstream https://github.com/ZhuLinsen/daily_stock_analysis.git
+          fi
+
+          # 获取所有远程 refs
           git fetch --all
 
           # 重置到当前远程 main
           git reset --hard origin/main
-
-          # 对齐 upstream
-          git fetch upstream
 
           # 检查 upstream 是否有新提交
           LOCAL=$(git rev-parse upstream/main)
